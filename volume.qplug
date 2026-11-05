@@ -1,0 +1,296 @@
+PluginInfo =
+{
+  Name = "Gain with Volume",
+  Version = "1.0.0",
+  Id = "a6df3093-45c3-474b-900e-47ae25ce1124",
+  Description = "Gain with a Volume fader for linear gain control",
+  Author = "Jasper Murrell, Q-SYS, jasper.murrell@qsc.com"
+}
+
+function GetColor()
+  return { 191, 226, 249 }
+end
+
+function GetProperties()
+  props = {
+    { 
+      Name = "Channel Count",
+      Type = "integer",
+      Min = 1,
+      Max = 128,
+      Value = 1,
+    },
+  }
+  return props
+end
+function RectifyProperties(props)
+   	props.plugin_show_debug.IsHidden = false
+  return props
+end
+
+
+function GetControls(props)
+  ctls = {
+    {
+      Name = "gain",
+      ControlType = "Knob",
+      ControlUnit = "dB",
+      Min = -100,
+      Max = 10,
+      Count = 1,
+      PinStyle = "Both",
+      UserPin = true
+    },
+    {
+      Name = "volume",
+      ControlType = "Knob",
+      ControlUnit = "Percent",
+      Min = 0,
+      Max = 100,
+      Count = 1,
+      PinStyle = "Both",
+      UserPin = true
+    },
+    {
+      Name = "mute",
+      ControlType = "Button",
+      ButtonType = "Toggle",
+      Count = 1,
+      PinStyle = "Both",
+      UserPin = true
+    }
+  }
+
+  return ctls
+end
+
+function GetControlLayout(props)
+  layout = {}
+  graphics = {}
+
+
+  layout["mute"] =
+  {
+    Style = "Button",
+    PrettyName = "Mute",
+    Position = {67, 19},
+    Size = {36,16},
+    Color = {223,0,36,255},
+    OffColor = {0,0,0,0},
+    StrokeColor = {105,105,105,255},
+    StrokeWidth = 1,
+    CornerRadius = 2,
+    Padding = 0,
+    Margin = 2,
+  }
+  layout["gain"] =
+  {
+    Style = "Knob",
+    PrettyName = "Gain",
+    Position = {67, 38},
+    Size = {36,36}
+  }
+  layout["volume"] =
+  {
+    Style = "Knob",
+    PrettyName = "Volume",
+    Position = {67, 76},
+    Color = {238,1,83,255},
+    Size = {36,36}
+  }
+
+
+    table.insert( graphics, {
+        Type = "Array",
+        Text = [===[Mute]===],
+        FontSize = 11,
+        Font = "Roboto",
+        FontStyle="Regular",
+        HTextAlign = "Center",
+        StrokeWidth = 0,
+        StrokeColor = {0,0,0,255},
+        StrokeWidth = 0,
+        CornerRadius = 0,
+        Color = {51,51,51,255},
+        Fill = {0,0,0,0},
+        Position = {0 , 19},
+        Size = {64,16},
+        Padding = 0,
+        Margin = 0,
+  	  });
+
+      table.insert( graphics, {
+          Type = "Array",
+          Text = [===[Gain (dB)]===],
+          FontSize = 11,
+          Font = "Roboto",
+          FontStyle="Regular",
+          HTextAlign = "Center",
+          StrokeWidth = 0,
+          StrokeColor = {0,0,0,255},
+          StrokeWidth = 0,
+          CornerRadius = 0,
+          Color = {51,51,51,255},
+          Fill = {0,0,0,0},
+          Position = {0 , 38},
+          Size = {64,36},
+          Padding = 0,
+          Margin = 0,
+    	  });
+
+        table.insert( graphics, {
+            Type = "Array",
+            Text = [===[Volume]===],
+            FontSize = 11,
+            Font = "Roboto",
+            FontStyle="Regular",
+            HTextAlign = "Center",
+            StrokeWidth = 0,
+            StrokeColor = {0,0,0,255},
+            StrokeWidth = 0,
+            CornerRadius = 0,
+            Color = {0,0,0,255},
+            Fill = {0,0,0,0},
+            Position = {0 , 76},
+            Size = {64,36},
+            Padding = 0,
+            Margin = 0,
+          });
+  return layout, graphics
+end
+
+function GetPins(props)
+  local ch_count = props["Channel Count"].Value
+  local pins = {}
+
+  for i = 1, ch_count do
+    table.insert(pins,
+    {
+      Name = string.format("Input %i", i),
+      Direction = "input",
+    })
+    table.insert(pins,
+    {
+      Name = string.format("Output %i", i),
+      Direction = "output",
+    })
+  end
+  return pins
+end
+
+function GetComponents(props)
+  local ch_count = props["Channel Count"].Value
+  comps = {
+      {
+        Name = "internal_gain",
+        Type =  "gain",
+        Properties =
+        {
+          multi_channel_type = 3, 
+          multi_channel_count = ch_count, 
+        }
+      },
+    }
+
+  return comps
+end
+
+function GetWiring(props)
+  local ch_count = props["Channel Count"].Value
+  local wiring = {}
+
+  for i = 1, ch_count do
+    table.insert(wiring, { string.format("Input %i", i) , string.format("internal_gain Input Channel %i", i) })
+    table.insert(wiring, { string.format("internal_gain Output Channel %i", i) , string.format("Output %i", i) })
+  end
+
+  return wiring
+end
+
+--Runtime Code
+if Controls then
+
+  local minGain = -100
+  local maxGain = 10
+
+  local alpha = 18.685
+  local beta = 1
+
+
+  function funcCheckMuteState()
+    print('Checking Mute State')
+    local state = (Controls.gain.Position == 0) or (Controls.volume.Position == 0)
+    Controls.mute.Boolean = state
+    internal_gain.mute.Boolean = state
+    collectgarbage()
+  end 
+
+  function funcCalculateGain()
+    print('Calculating Gain')
+  
+    local normalised = Controls.volume.Value / 100
+  
+  
+    local mappedDb = minGain + (maxGain - minGain) * (math.log10(alpha * normalised + beta) / math.log10(alpha + beta))
+
+    Controls.gain.Value = mappedDb
+    
+    funcCheckMuteState()
+
+    internal_gain.gain.Value = Controls.gain.Value
+    savedVolume = Controls.volume.Position 
+    savedGain   = Controls.gain.Position
+  end 
+  
+  function funcCalculateVolume()
+    print('Calculating Volume')
+
+
+    if Controls.gain.Value < minGain then Controls.gain.Value = minGain end
+    if Controls.gain.Value > maxGain then Controls.gain.Value = maxGain end
+
+    local t = (Controls.gain.Value - minGain) / (maxGain - minGain)
+    local normalised = (10^ (t * math.log10(alpha + beta)) - beta) / alpha
+    local percentage = normalised * 100
+
+    Controls.volume.Value = percentage
+  
+    funcCheckMuteState()
+
+    internal_gain.gain.Value = Controls.gain.Value
+    savedVolume = Controls.volume.Position 
+    savedGain   = Controls.gain.Position
+  end 
+  
+  
+  
+  function funcAutoMute()
+  
+    if Controls.mute.Boolean then 
+      savedGain   = Controls.gain.Position
+      savedVolume = Controls.volume.Position
+      Controls.gain.Position   = 0
+      Controls.volume.Position = 0
+    else 
+      Controls.gain.Position   = savedGain
+      Controls.volume.Position = savedVolume
+    end 
+    internal_gain.gain.Value = Controls.gain.Value
+  end 
+  
+ function funcInit()
+    savedVolume = Controls.volume.Position 
+    savedGain   = Controls.gain.Position
+
+    internal_gain.gain.Value    = Controls.gain.Value
+    internal_gain.mute.Boolean  = Controls.mute.Boolean
+    funcCalculateVolume() 
+  end 
+  
+  Controls.gain.EventHandler   = funcCalculateVolume
+  Controls.volume.EventHandler = funcCalculateGain
+  Controls.mute.EventHandler   = funcAutoMute
+  
+  funcInit()
+
+end
